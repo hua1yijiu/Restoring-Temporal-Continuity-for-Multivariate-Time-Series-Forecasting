@@ -48,7 +48,6 @@ class MambaBlock(nn.Module):
             y, _ = self.fallback_rnn(x_in)
             y = self.fallback_proj(y)
 
-        # 恢复原 dtype
         if y.dtype != orig_dtype:
             y = y.to(orig_dtype)
         return x + self.drop(y)
@@ -65,7 +64,6 @@ class TopKMoEMultiWindowAttention(nn.Module):
         proj_dropout: float = 0.0,
     ):
         super().__init__()
-        assert topk >= 1 and topk <= len(windows), "topk 应在 [1, num_experts] 范围内"
         self.d_model = d_model
         self.n_heads = n_heads
         self.windows = list(windows)
@@ -281,7 +279,6 @@ class TrendExtractor(nn.Module):
         self.pred_len = pred_len
         self.seq_len = seq_len
 
-        # 将标量序列扩为特征维度 D： [B*C, L, 1] -> [B*C, L, D]
         self.in_proj = nn.Linear(1, d_model)
 
         self.mamba_stack = nn.ModuleList([
@@ -289,15 +286,11 @@ class TrendExtractor(nn.Module):
             for _ in range(mamba_layers)
         ])
 
-        # 先把特征降回标量，再从 L -> pred_len 做时间维线性映射
         self.to_scalar = nn.Linear(d_model, 1)      # [B*C, L, D] -> [B*C, L, 1]
         self.time_proj = nn.Linear(seq_len, pred_len)  # [B*C, L] -> [B*C, pred_len]
 
     def forward(self, t_flat: torch.Tensor) -> torch.Tensor:
-        """
-        t_flat: [B*C, I] （通道独立）
-        返回:   [B*C, pred_len]
-        """
+
         x = t_flat.unsqueeze(-1)            # [B*C, L, 1]
         x = self.in_proj(x)                 # [B*C, L, D]
         x = x.contiguous()
@@ -315,7 +308,6 @@ class RCS1DTime(nn.Module):
         self.num_heads = num_heads
         self.d_head = dim // num_heads
 
-        # 温度初始化稍“钝化”，减小初始扰动
         self.temperature = nn.Parameter(torch.full((num_heads,1,1), 0.5))
         self.attn_drop = nn.Dropout(attn_drop)
 
@@ -453,8 +445,8 @@ class PatchContextGate(nn.Module):
         W       = torch.sigmoid(W_logit)                # (0,1)
 
         z_gate  = z * W + com * (1.0 - W)               # [B*,P,D]
-        g = torch.sigmoid(self.gamma)                   # (0,1) 小值
-        out = z + g * self.drop(z_gate - z)             # 稳定接入
+        g = torch.sigmoid(self.gamma)                   
+        out = z + g * self.drop(z_gate - z)             
 
         return out
 
